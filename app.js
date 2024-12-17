@@ -48,6 +48,7 @@ const bannerRoutes = require('./routes/bannerRoutes');
 app.use('/api', bannerRoutes);
 
 // Start server on port 6000
+const PORT = process.env.PORT || 6000;
 app.listen(6000, () => {
   console.log('Server running on port 6000');
 });
