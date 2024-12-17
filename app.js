@@ -49,6 +49,6 @@ app.use('/api', bannerRoutes);
 
 // Start server on port 6000
 const PORT = 6000; // Hardcoded port
-app.listen(6000, () => {
+app.listen(PORT, () => {
   console.log('Server running on port 6000');
 });
