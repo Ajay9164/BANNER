@@ -1,116 +1,125 @@
 const express = require('express');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
-const Banner = require('../models/Banner');
-const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
-
-// Ensure the folder for banner images exists
-const uploadDir = path.join(__dirname, '..', 'uploads', 'banner');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log('Directory uploads/banner created!');
-}
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const Banner = require('../models/Banner');
 
 // Multer setup for file uploads
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir); // Save to the 'uploads/banner' folder
+  destination: (req, file, cb) => {
+    const uploadPath = 'uploads/picture/'; // The folder path where images will be saved
+
+    // Ensure the 'uploads/picture' folder exists, create it if not
+    fs.mkdir(uploadPath, { recursive: true }, (err) => {
+      if (err) {
+        console.error('Error creating directory:', err);
+        return cb(new Error('Failed to create directory'));
+      }
+      cb(null, uploadPath); // Continue to upload if folder exists or is created
+    });
   },
-  filename: function (req, file, cb) {
-    cb(null, uuidv4() + '-' + file.originalname); // Generate a unique file name
+  filename: (req, file, cb) => {
+    const uniqueName = `${Date.now()}-${file.originalname}`;
+    cb(null, uniqueName); // Create a unique filename to avoid collisions
   }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    const fileTypes = /jpeg|jpg|png/;
+    const extName = fileTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimeType = fileTypes.test(file.mimetype);
 
-// Fetch all banner images
-router.get('/banner-images', async (req, res) => {
-  try {
-    const banner = await Banner.findOne();
-    if (!banner) return res.status(200).json({ images: [] });
-    res.status(200).json(banner.images);
-  } catch (error) {
-    res.status(500).json({ error: 'Server Error' });
+    if (extName && mimeType) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images (jpeg, jpg, png) are allowed'));
+    }
   }
 });
 
-// Add a new image
-router.post('/banner-images', upload.single('image'), async (req, res) => {
-  try {
-    const banner = await Banner.findOne() || new Banner();
+// POST: Upload an image
+router.post('/api/banner-images', upload.single('image'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
 
-    if (banner.images.length >= 3) {
-      return res.status(400).json({ error: 'Maximum of 3 images allowed' });
+  try {
+    const newBanner = new Banner({
+      imageId: req.file.filename,
+      url: `picture/${req.file.filename}` // Correct path for the stored image
+    });
+    await newBanner.save();
+
+    res.status(201).json({
+      imageId: newBanner.imageId,
+      url: newBanner.url
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save banner' });
+  }
+});
+
+// GET: Fetch all uploaded images
+router.get('/api/banner-images', async (req, res) => {
+  try {
+    const banners = await Banner.find({});
+    res.status(200).json(banners);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch banners' });
+  }
+});
+
+// PUT: Replace an existing image
+router.put('/api/banner-images/:imageId', upload.single('image'), async (req, res) => {
+  const { imageId } = req.params;
+
+  try {
+    const banner = await Banner.findOne({ imageId });
+    if (!banner) {
+      return res.status(404).json({ error: 'Image not found' });
     }
 
-    const newImage = {
-      imageId: uuidv4(),
-      url: `uploads/banner/${req.file.filename}`
-    };
+    const oldFilePath = path.join(__dirname, '../uploads/picture/', banner.url);
+    if (fs.existsSync(oldFilePath)) {
+      fs.unlinkSync(oldFilePath); // Delete old file if it exists
+    }
 
-    banner.images.push(newImage);
+    banner.imageId = req.file.filename;
+    banner.url = `picture/${req.file.filename}`;
     await banner.save();
 
-    res.status(201).json({ message: 'Image added successfully', image: newImage });
-  } catch (error) {
-    res.status(500).json({ error: 'Server Error' });
+    res.status(200).json({
+      imageId: banner.imageId,
+      url: banner.url
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to replace image' });
   }
 });
 
-// Replace an existing image
-router.put('/banner-images/:imageId', upload.single('image'), async (req, res) => {
+// DELETE: Delete an image
+router.delete('/api/banner-images/:imageId', async (req, res) => {
+  const { imageId } = req.params;
+
   try {
-    const { imageId } = req.params;
-    const banner = await Banner.findOne();
-    if (!banner) return res.status(404).json({ error: 'Banner not found' });
-
-    const imageIndex = banner.images.findIndex(img => img.imageId === imageId);
-    if (imageIndex === -1) return res.status(404).json({ error: 'Image not found' });
-
-    // Delete the old image from the file system
-    const oldImagePath = path.join(__dirname, '..', banner.images[imageIndex].url);
-    if (fs.existsSync(oldImagePath)) {
-      fs.unlinkSync(oldImagePath);
+    const banner = await Banner.findOne({ imageId });
+    if (!banner) {
+      return res.status(404).json({ error: 'Image not found' });
     }
 
-    const updatedImage = {
-      imageId: imageId,
-      url: `uploads/banner/${req.file.filename}`
-    };
-
-    banner.images[imageIndex] = updatedImage;
-    await banner.save();
-
-    res.status(200).json({ message: 'Image replaced successfully', image: updatedImage });
-  } catch (error) {
-    res.status(500).json({ error: 'Server Error' });
-  }
-});
-
-// Delete an image
-router.delete('/banner-images/:imageId', async (req, res) => {
-  try {
-    const { imageId } = req.params;
-    const banner = await Banner.findOne();
-    if (!banner) return res.status(404).json({ error: 'Banner not found' });
-
-    const imageIndex = banner.images.findIndex(img => img.imageId === imageId);
-    if (imageIndex === -1) return res.status(404).json({ error: 'Image not found' });
-
-    // Delete the image from the file system
-    const imagePath = path.join(__dirname, '..', banner.images[imageIndex].url);
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
+    const filePath = path.join(__dirname, '../uploads/picture/', banner.url);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath); // Delete file from disk
     }
 
-    banner.images.splice(imageIndex, 1);
-    await banner.save();
+    await Banner.deleteOne({ imageId });
 
     res.status(200).json({ message: 'Image deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ error: 'Server Error' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete image' });
   }
 });
 
