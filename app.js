@@ -2,15 +2,22 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const path = require('path');
+const fs = require('fs');
 const bannerRoutes = require('./routes/bannerRoutes');
 
-dotenv.config();  // Load environment variables
+dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 6000;  // Default to port 6000
+const PORT = process.env.PORT || 6000;
 
 // Middleware to parse JSON
 app.use(express.json());
+
+// Ensure the uploads directory exists
+const uploadDir = path.join(__dirname, 'uploads/picture');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Static folder to serve uploaded images
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

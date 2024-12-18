@@ -8,25 +8,21 @@ const Banner = require('../models/Banner');
 // Multer setup for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = 'uploads/picture/'; // The folder path where images will be saved
-
-    // Ensure the 'uploads/picture' folder exists, create it if not
-    fs.mkdir(uploadPath, { recursive: true }, (err) => {
-      if (err) {
-        console.error('Error creating directory:', err);
-        return cb(new Error('Failed to create directory'));
-      }
-      cb(null, uploadPath); // Continue to upload if folder exists or is created
-    });
+    const uploadDir = path.join(__dirname, '../uploads/picture');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
     const uniqueName = `${Date.now()}-${file.originalname}`;
-    cb(null, uniqueName); // Create a unique filename to avoid collisions
+    cb(null, uniqueName);
   }
 });
 
 const upload = multer({
   storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
     const fileTypes = /jpeg|jpg|png/;
     const extName = fileTypes.test(path.extname(file.originalname).toLowerCase());
@@ -49,7 +45,7 @@ router.post('/api/banner-images', upload.single('image'), async (req, res) => {
   try {
     const newBanner = new Banner({
       imageId: req.file.filename,
-      url: `picture/${req.file.filename}` // Correct path for the stored image
+      url: `picture/${req.file.filename}`
     });
     await newBanner.save();
 
@@ -58,6 +54,7 @@ router.post('/api/banner-images', upload.single('image'), async (req, res) => {
       url: newBanner.url
     });
   } catch (err) {
+    console.error('Error saving banner:', err);
     res.status(500).json({ error: 'Failed to save banner' });
   }
 });
@@ -68,6 +65,7 @@ router.get('/api/banner-images', async (req, res) => {
     const banners = await Banner.find({});
     res.status(200).json(banners);
   } catch (err) {
+    console.error('Error fetching banners:', err);
     res.status(500).json({ error: 'Failed to fetch banners' });
   }
 });
@@ -82,9 +80,9 @@ router.put('/api/banner-images/:imageId', upload.single('image'), async (req, re
       return res.status(404).json({ error: 'Image not found' });
     }
 
-    const oldFilePath = path.join(__dirname, '../uploads/picture/', banner.url);
+    const oldFilePath = path.join(__dirname, '../uploads/', banner.url);
     if (fs.existsSync(oldFilePath)) {
-      fs.unlinkSync(oldFilePath); // Delete old file if it exists
+      fs.unlinkSync(oldFilePath);
     }
 
     banner.imageId = req.file.filename;
@@ -96,6 +94,7 @@ router.put('/api/banner-images/:imageId', upload.single('image'), async (req, re
       url: banner.url
     });
   } catch (err) {
+    console.error('Error replacing image:', err);
     res.status(500).json({ error: 'Failed to replace image' });
   }
 });
@@ -110,15 +109,16 @@ router.delete('/api/banner-images/:imageId', async (req, res) => {
       return res.status(404).json({ error: 'Image not found' });
     }
 
-    const filePath = path.join(__dirname, '../uploads/picture/', banner.url);
+    const filePath = path.join(__dirname, '../uploads/', banner.url);
     if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath); // Delete file from disk
+      fs.unlinkSync(filePath);
     }
 
     await Banner.deleteOne({ imageId });
 
     res.status(200).json({ message: 'Image deleted successfully' });
   } catch (err) {
+    console.error('Error deleting image:', err);
     res.status(500).json({ error: 'Failed to delete image' });
   }
 });
