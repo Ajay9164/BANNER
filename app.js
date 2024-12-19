@@ -4,6 +4,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const fs = require('fs');
 const bannerRoutes = require('./routes/bannerRoutes');
+require('dotenv').config();
 
 dotenv.config();
 
@@ -33,3 +34,4 @@ app.use('/', bannerRoutes);
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+console.log('MongoDB URI:', process.env.MONGO_URI);
